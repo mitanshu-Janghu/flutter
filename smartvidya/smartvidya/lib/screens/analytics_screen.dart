@@ -60,9 +60,10 @@ class AnalyticsScreen extends StatelessWidget {
         title: const Text("Learning Analytics"),
       ),
 
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
+      body: SingleChildScrollView(
+  child: Padding(
+    padding: const EdgeInsets.all(20),
+    child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
 
@@ -111,6 +112,7 @@ class AnalyticsScreen extends StatelessWidget {
           ],
         ),
       ),
+    ),
     );
   }
 }

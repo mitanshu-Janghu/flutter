@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'settings_screen.dart';
+import 'signup_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -108,7 +110,14 @@ class ProfileScreen extends StatelessWidget {
                 style: TextStyle(color: Colors.white),
               ),
               trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54),
-              onTap: () {},
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SettingsScreen(),
+                  ),
+                );
+              },
             ),
 
             const Divider(color: Colors.white12),
@@ -120,8 +129,19 @@ class ProfileScreen extends StatelessWidget {
                 "Logout",
                 style: TextStyle(color: Colors.red),
               ),
-              onTap: () {},
+              onTap: () {
+
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SignupScreen(),
+                  ),
+                  (route) => false,
+                );
+
+              },
             ),
+
           ],
         ),
       ),

@@ -6,6 +6,8 @@ import 'reading_support_screen.dart';
 import 'profile_screen.dart';
 import 'class_screen.dart';
 import 'analytics_screen.dart';
+import 'study_tools_screen.dart';
+import 'camera_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -98,9 +100,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
 
-                  const CircleAvatar(
-                    backgroundColor: Colors.green,
-                    child: Icon(Icons.camera_alt, color: Colors.white),
+                  IconButton(
+                    icon: const Icon(Icons.camera_alt, color: Colors.green),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const CameraScreen(),
+                        ),
+                      );
+                    },
                   )
                 ],
               ),
@@ -207,13 +216,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
 
     /// PAGES FOR NAVIGATION
-final List<Widget> pages = [
-  homePage(),
-  const AnalyticsScreen(),
-  const ClassScreen(),
-  const ProfileScreen(),
-]; 
-return Scaffold(
+    final List<Widget> pages = [
+      homePage(),
+      const AnalyticsScreen(),
+      const ClassScreen(),
+      const StudyToolsScreen(),
+      const ProfileScreen(),
+    ];
+
+    return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
 
       body: pages[_selectedIndex],
@@ -225,10 +236,31 @@ return Scaffold(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.grid_view), label: "Home"),
-          BottomNavigationBarItem(icon: Icon(Icons.pie_chart), label: "Analytics"),
-          BottomNavigationBarItem(icon: Icon(Icons.group), label: "Class"),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
+
+          BottomNavigationBarItem(
+            icon: Icon(Icons.grid_view),
+            label: "Home",
+          ),
+
+          BottomNavigationBarItem(
+            icon: Icon(Icons.pie_chart),
+            label: "Analytics",
+          ),
+
+          BottomNavigationBarItem(
+            icon: Icon(Icons.group),
+            label: "Class",
+          ),
+
+          BottomNavigationBarItem(
+            icon: Icon(Icons.school),
+            label: "Study",
+          ),
+
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: "Profile",
+          ),
         ],
       ),
     );
