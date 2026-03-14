@@ -1,12 +1,57 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_screen.dart';
 import 'signup_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
   @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+
+  String name = "";
+  String email = "";
+
+  @override
+  void initState() {
+    super.initState();
+    loadUserData();
+  }
+
+  /// LOAD USER DATA FROM STORAGE
+  void loadUserData() async {
+
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+
+    String firstName = prefs.getString("firstName") ?? "";
+    String lastName = prefs.getString("lastName") ?? "";
+    String userEmail = prefs.getString("email") ?? "";
+
+    setState(() {
+      name = "$firstName $lastName";
+      email = userEmail;
+    });
+  }
+
+  /// LOGOUT FUNCTION
+  void logout() async {
+
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const SignupScreen()),
+      (route) => false,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
 
@@ -35,10 +80,10 @@ class ProfileScreen extends StatelessWidget {
 
             const SizedBox(height: 15),
 
-            /// NAME
-            const Text(
-              "Student Name",
-              style: TextStyle(
+            /// USER NAME
+            Text(
+              name.isEmpty ? "Loading..." : name,
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
@@ -48,9 +93,9 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 5),
 
             /// EMAIL
-            const Text(
-              "student@email.com",
-              style: TextStyle(
+            Text(
+              email,
+              style: const TextStyle(
                 color: Colors.white54,
                 fontSize: 16,
               ),
@@ -95,14 +140,13 @@ class ProfileScreen extends StatelessWidget {
                       Text("89%", style: TextStyle(color: Colors.green)),
                     ],
                   ),
-
                 ],
               ),
             ),
 
             const SizedBox(height: 30),
 
-            /// SETTINGS BUTTON
+            /// SETTINGS
             ListTile(
               leading: const Icon(Icons.settings, color: Colors.white),
               title: const Text(
@@ -122,24 +166,14 @@ class ProfileScreen extends StatelessWidget {
 
             const Divider(color: Colors.white12),
 
-            /// LOGOUT BUTTON
+            /// LOGOUT
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
               title: const Text(
                 "Logout",
                 style: TextStyle(color: Colors.red),
               ),
-              onTap: () {
-
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const SignupScreen(),
-                  ),
-                  (route) => false,
-                );
-
-              },
+              onTap: logout,
             ),
 
           ],

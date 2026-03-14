@@ -5,13 +5,15 @@ plugins {
 }
 
 android {
+
     namespace = "com.example.smartvidya"
-    compileSdk = 34
+
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.smartvidya"
         minSdk = flutter.minSdkVersion
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
     }

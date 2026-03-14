@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:audioplayers/audioplayers.dart';
 
 class PomodoroTimerScreen extends StatefulWidget {
   const PomodoroTimerScreen({super.key});
@@ -10,24 +11,30 @@ class PomodoroTimerScreen extends StatefulWidget {
 
 class _PomodoroTimerScreenState extends State<PomodoroTimerScreen> {
 
-  static const int studyTime = 25 * 60;
-  static const int breakTime = 5 * 60;
+  int totalSeconds = 25 * 60;
+  int remainingSeconds = 25 * 60;
 
-  int remainingSeconds = studyTime;
   bool isRunning = false;
-  bool isStudy = true;
 
   Timer? timer;
 
+  final AudioPlayer player = AudioPlayer();
+
+  TextEditingController minuteController = TextEditingController();
+
   void startTimer() {
+
     timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+
       if (remainingSeconds > 0) {
         setState(() {
           remainingSeconds--;
         });
       } else {
-        switchMode();
+        playAlarm();
+        pauseTimer();
       }
+
     });
 
     setState(() {
@@ -36,6 +43,7 @@ class _PomodoroTimerScreenState extends State<PomodoroTimerScreen> {
   }
 
   void pauseTimer() {
+
     timer?.cancel();
 
     setState(() {
@@ -44,25 +52,34 @@ class _PomodoroTimerScreenState extends State<PomodoroTimerScreen> {
   }
 
   void resetTimer() {
+
     timer?.cancel();
 
     setState(() {
-      remainingSeconds = isStudy ? studyTime : breakTime;
+      remainingSeconds = totalSeconds;
       isRunning = false;
     });
   }
 
-  void switchMode() {
+  void setCustomTimer() {
+
+    int minutes = int.tryParse(minuteController.text) ?? 25;
+
     timer?.cancel();
 
     setState(() {
-      isStudy = !isStudy;
-      remainingSeconds = isStudy ? studyTime : breakTime;
+      totalSeconds = minutes * 60;
+      remainingSeconds = totalSeconds;
       isRunning = false;
     });
+  }
+
+  void playAlarm() async {
+    await player.play(AssetSource('sounds/alarm.wav'));
   }
 
   String formatTime(int seconds) {
+
     int minutes = seconds ~/ 60;
     int secs = seconds % 60;
 
@@ -72,6 +89,8 @@ class _PomodoroTimerScreenState extends State<PomodoroTimerScreen> {
   @override
   Widget build(BuildContext context) {
 
+    double progress = remainingSeconds / totalSeconds;
+
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
 
@@ -80,49 +99,101 @@ class _PomodoroTimerScreenState extends State<PomodoroTimerScreen> {
         backgroundColor: Colors.black,
       ),
 
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
+      body: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
 
-          Text(
-            isStudy ? "Study Time" : "Break Time",
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 22,
-            ),
-          ),
+            const SizedBox(height: 40),
 
-          const SizedBox(height: 30),
+            /// USER TIMER INPUT
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
 
-          Text(
-            formatTime(remainingSeconds),
-            style: const TextStyle(
-              color: Colors.green,
-              fontSize: 80,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+              child: Row(
+                children: [
 
-          const SizedBox(height: 40),
+                  Expanded(
+                    child: TextField(
+                      controller: minuteController,
+                      keyboardType: TextInputType.number,
+                      style: const TextStyle(color: Colors.white),
 
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
+                      decoration: const InputDecoration(
+                        hintText: "Enter minutes",
+                        hintStyle: TextStyle(color: Colors.white54),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
 
-              ElevatedButton(
-                onPressed: isRunning ? pauseTimer : startTimer,
-                child: Text(isRunning ? "Pause" : "Start"),
+                  const SizedBox(width: 10),
+
+                  ElevatedButton(
+                    onPressed: setCustomTimer,
+                    child: const Text("Set"),
+                  )
+                ],
               ),
+            ),
 
-              const SizedBox(width: 20),
+            const SizedBox(height: 60),
 
-              ElevatedButton(
-                onPressed: resetTimer,
-                child: const Text("Reset"),
+            /// TIMER CIRCLE
+            Center(
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+
+                  SizedBox(
+                    width: 220,
+                    height: 220,
+
+                    child: CircularProgressIndicator(
+                      value: progress,
+                      strokeWidth: 10,
+                      backgroundColor: Colors.grey[800],
+                      valueColor: const AlwaysStoppedAnimation(Colors.green),
+                    ),
+                  ),
+
+                  Text(
+                    formatTime(remainingSeconds),
+                    style: const TextStyle(
+                      color: Colors.green,
+                      fontSize: 50,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
-            ],
-          )
-        ],
+            ),
+
+            const SizedBox(height: 60),
+
+            /// BUTTONS
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+
+                ElevatedButton(
+                  onPressed: isRunning ? pauseTimer : startTimer,
+                  child: Text(isRunning ? "Pause" : "Start"),
+                ),
+
+                const SizedBox(width: 20),
+
+                ElevatedButton(
+                  onPressed: resetTimer,
+                  child: const Text("Reset"),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 40),
+
+          ],
+        ),
       ),
     );
   }

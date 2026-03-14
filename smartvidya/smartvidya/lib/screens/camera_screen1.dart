@@ -13,21 +13,13 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
 
   CameraController? controller;
-  bool isCameraReady = false;
-
-  late FaceDetector faceDetector;
-
-  int faceCount = 0;
-
+  bool cameraReady = false;
   bool processing = false;
 
+  int faceCount = 0;
   String sleepy = "No";
-  String smile = "No";
-  String looking = "Center";
 
-  double attention = 80;
-
-  Rect? faceBox;
+  late FaceDetector faceDetector;
 
   @override
   void initState() {
@@ -35,16 +27,15 @@ class _CameraScreenState extends State<CameraScreen> {
 
     faceDetector = FaceDetector(
       options: FaceDetectorOptions(
-        performanceMode: FaceDetectorMode.accurate,
-        enableContours: true,
-        enableClassification: true,
+        performanceMode: FaceDetectorMode.fast,
+        enableClassification: true, // needed for eye detection
       ),
     );
 
-    initCamera();
+    startCamera();
   }
 
-  Future<void> initCamera() async {
+  Future<void> startCamera() async {
 
     final cameras = await availableCameras();
 
@@ -54,128 +45,75 @@ class _CameraScreenState extends State<CameraScreen> {
 
     controller = CameraController(
       frontCamera,
-      ResolutionPreset.high,
+      ResolutionPreset.medium,
       enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.nv21,
     );
 
     await controller!.initialize();
 
-    startStream();
+    controller!.startImageStream(processImage);
 
     setState(() {
-      isCameraReady = true;
+      cameraReady = true;
     });
   }
 
-  void startStream() {
+  Future<void> processImage(CameraImage image) async {
 
-    controller!.startImageStream((CameraImage image) async {
+    if (processing) return;
+    processing = true;
 
-      if (processing) return;
-      processing = true;
+    try {
 
-      try {
+      final rotation =
+          InputImageRotationValue.fromRawValue(
+            controller!.description.sensorOrientation,
+          ) ??
+          InputImageRotation.rotation0deg;
 
-        final camera = controller!.description;
+      final inputImage = InputImage.fromBytes(
+        bytes: image.planes.first.bytes,
+        metadata: InputImageMetadata(
+          size: Size(image.width.toDouble(), image.height.toDouble()),
+          rotation: rotation,
+          format: InputImageFormat.nv21,
+          bytesPerRow: image.planes.first.bytesPerRow,
+        ),
+      );
 
-        final rotation =
-            InputImageRotationValue.fromRawValue(camera.sensorOrientation) ??
-                InputImageRotation.rotation0deg;
+      final faces = await faceDetector.processImage(inputImage);
 
-        final format =
-            InputImageFormatValue.fromRawValue(image.format.raw) ??
-                InputImageFormat.yuv420;
+      if (faces.isNotEmpty) {
 
-        final inputImage = InputImage.fromBytes(
-          bytes: image.planes.first.bytes,
-          metadata: InputImageMetadata(
-            size: Size(image.width.toDouble(), image.height.toDouble()),
-            rotation: rotation,
-            format: format,
-            bytesPerRow: image.planes.first.bytesPerRow,
-          ),
-        );
+        final face = faces.first;
 
-        final faces = await faceDetector.processImage(inputImage);
+        double? leftEye = face.leftEyeOpenProbability;
+        double? rightEye = face.rightEyeOpenProbability;
 
-        print("Faces detected: ${faces.length}");
+        if (leftEye != null && rightEye != null) {
 
-        if (faces.isNotEmpty) {
-
-          final face = faces.first;
-
-          faceBox = face.boundingBox;
-
-          /// ---------- Sleepy detection ----------
-          double? leftEye = face.leftEyeOpenProbability;
-          double? rightEye = face.rightEyeOpenProbability;
-
-          if (leftEye != null && rightEye != null) {
-
-            if (leftEye < 0.35 && rightEye < 0.35) {
-              sleepy = "Yes";
-              attention -= 1;
-            } else {
-              sleepy = "No";
-              attention += 0.2;
-            }
-
+          if (leftEye < 0.35 && rightEye < 0.35) {
+            sleepy = "Yes";
+          } else {
+            sleepy = "No";
           }
-
-          /// ---------- Smile detection ----------
-          if (face.smilingProbability != null) {
-
-            if (face.smilingProbability! > 0.7) {
-              smile = "Yes";
-              attention += 0.2;
-            } else {
-              smile = "No";
-            }
-
-          }
-
-          /// ---------- Looking direction ----------
-          double? yaw = face.headEulerAngleY;
-
-          if (yaw != null) {
-
-            if (yaw > 20) {
-              looking = "Right";
-              attention -= 0.5;
-            } else if (yaw < -20) {
-              looking = "Left";
-              attention -= 0.5;
-            } else {
-              looking = "Center";
-            }
-
-          }
-
-          attention = attention.clamp(0, 100);
-
-        } else {
-
-          faceBox = null;
 
         }
-
-        if (mounted) {
-          setState(() {
-            faceCount = faces.length;
-          });
-        }
-
-      } catch (e, stack) {
-
-        print("Face detection error: $e");
-        print(stack);
 
       }
 
-      processing = false;
+      if (mounted) {
+        setState(() {
+          faceCount = faces.length;
+        });
+      }
 
-    });
+    } catch (e) {
+      debugPrint("Face detection error: $e");
+    }
 
+    processing = false;
   }
 
   @override
@@ -188,7 +126,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   Widget build(BuildContext context) {
 
-    if (!isCameraReady) {
+    if (!cameraReady) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
@@ -200,23 +138,8 @@ class _CameraScreenState extends State<CameraScreen> {
 
           CameraPreview(controller!),
 
-          /// ---------- Face box ----------
-          if (faceBox != null)
-            Positioned(
-              left: faceBox!.left,
-              top: faceBox!.top,
-              width: faceBox!.width,
-              height: faceBox!.height,
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.green,width: 2),
-                ),
-              ),
-            ),
-
-          /// ---------- Info panel ----------
           Positioned(
-            top: 60,
+            top: 80,
             left: 20,
             child: Container(
               padding: const EdgeInsets.all(12),
@@ -225,20 +148,19 @@ class _CameraScreenState extends State<CameraScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
 
-                  Text("Faces: $faceCount",
-                      style: const TextStyle(color: Colors.white,fontSize: 18)),
+                  Text(
+                    "Faces detected: $faceCount",
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 20),
+                  ),
 
-                  Text("Sleepy: $sleepy",
-                      style: const TextStyle(color: Colors.white)),
+                  const SizedBox(height: 6),
 
-                  Text("Smile: $smile",
-                      style: const TextStyle(color: Colors.white)),
-
-                  Text("Looking: $looking",
-                      style: const TextStyle(color: Colors.white)),
-
-                  Text("Attention: ${attention.toStringAsFixed(0)}%",
-                      style: const TextStyle(color: Colors.yellow)),
+                  Text(
+                    "Sleepy: $sleepy",
+                    style: const TextStyle(
+                        color: Colors.yellow, fontSize: 18),
+                  ),
 
                 ],
               ),

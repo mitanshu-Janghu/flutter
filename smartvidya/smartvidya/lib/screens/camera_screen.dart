@@ -1,7 +1,8 @@
-import 'dart:async';
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'dart:ui';
+import 'package:audioplayers/audioplayers.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -13,112 +14,168 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
 
   CameraController? controller;
-  List<CameraDescription>? cameras;
+  bool cameraReady = false;
+  bool processing = false;
 
-  final FaceDetector faceDetector = FaceDetector(
-    options: FaceDetectorOptions(
-      enableContours: true,
-      enableLandmarks: true,
-      enableClassification: true,
-      performanceMode: FaceDetectorMode.accurate,
-    ),
-  );
+  int faceCount = 0;
+  String sleepy = "No";
 
-  bool isBusy = false;
-  List<Face> faces = [];
+  DateTime? eyesClosedStart;
+
+  final AudioPlayer player = AudioPlayer();
+  bool alarmPlaying = false;
+
+  late FaceDetector faceDetector;
 
   @override
   void initState() {
     super.initState();
+
+    player.setVolume(1.0);
+
+    faceDetector = FaceDetector(
+      options: FaceDetectorOptions(
+        performanceMode: FaceDetectorMode.fast,
+        enableClassification: true,
+      ),
+    );
+
     startCamera();
   }
 
   Future<void> startCamera() async {
 
-    cameras = await availableCameras();
+    final cameras = await availableCameras();
+
+    final frontCamera = cameras.firstWhere(
+      (camera) => camera.lensDirection == CameraLensDirection.front,
+    );
 
     controller = CameraController(
-      cameras![0],
+      frontCamera,
       ResolutionPreset.medium,
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.yuv420,
+      imageFormatGroup: ImageFormatGroup.nv21,
     );
 
     await controller!.initialize();
 
-    controller!.startImageStream((CameraImage image) {
-      processCameraImage(image);
-    });
+    controller!.startImageStream(processImage);
 
-    setState(() {});
+    setState(() {
+      cameraReady = true;
+    });
   }
 
-  Future<void> processCameraImage(CameraImage image) async {
+  Future<void> processImage(CameraImage image) async {
 
-    if (isBusy) return;
-    isBusy = true;
+    if (processing) return;
+    processing = true;
 
-    final WriteBuffer allBytes = WriteBuffer();
+    try {
 
-    for (Plane plane in image.planes) {
-      allBytes.putUint8List(plane.bytes);
+      final rotation =
+          InputImageRotationValue.fromRawValue(
+            controller!.description.sensorOrientation,
+          ) ??
+          InputImageRotation.rotation0deg;
+
+      final inputImage = InputImage.fromBytes(
+        bytes: image.planes.first.bytes,
+        metadata: InputImageMetadata(
+          size: Size(image.width.toDouble(), image.height.toDouble()),
+          rotation: rotation,
+          format: InputImageFormat.nv21,
+          bytesPerRow: image.planes.first.bytesPerRow,
+        ),
+      );
+
+      final faces = await faceDetector.processImage(inputImage);
+
+      if (faces.isNotEmpty) {
+
+        final face = faces.first;
+
+        double? leftEye = face.leftEyeOpenProbability;
+        double? rightEye = face.rightEyeOpenProbability;
+
+        if (leftEye != null && rightEye != null) {
+
+          bool eyesClosed = leftEye < 0.35 && rightEye < 0.35;
+
+          if (eyesClosed) {
+
+            if (eyesClosedStart == null) {
+              eyesClosedStart = DateTime.now();
+            }
+
+            final secondsClosed =
+                DateTime.now().difference(eyesClosedStart!).inSeconds;
+
+            if (secondsClosed >= 3) {
+
+              sleepy = "Yes";
+
+              if (!alarmPlaying) {
+                alarmPlaying = true;
+                await player.play(
+                   AssetSource('sounds/alarm.wav'),
+                );
+              }
+
+            }
+
+          } else {
+
+            eyesClosedStart = null;
+            sleepy = "No";
+
+            if (alarmPlaying) {
+              await player.stop();
+              alarmPlaying = false;
+            }
+
+          }
+
+        }
+
+      } else {
+
+        eyesClosedStart = null;
+        sleepy = "No";
+
+        if (alarmPlaying) {
+          await player.stop();
+          alarmPlaying = false;
+        }
+
+      }
+
+      if (mounted) {
+        setState(() {
+          faceCount = faces.length;
+        });
+      }
+
+    } catch (e) {
+      debugPrint("Face detection error: $e");
     }
 
-    final bytes = allBytes.done().buffer.asUint8List();
-
-    final Size imageSize =
-        Size(image.width.toDouble(), image.height.toDouble());
-
-    final camera = cameras![0];
-
-    final imageRotation =
-        InputImageRotationValue.fromRawValue(camera.sensorOrientation) ??
-            InputImageRotation.rotation0deg;
-
-    final inputImageFormat =
-        InputImageFormatValue.fromRawValue(image.format.raw) ??
-            InputImageFormat.yuv420;
-
-    final planeData = image.planes.map(
-      (Plane plane) {
-        return InputImagePlaneMetadata(
-          bytesPerRow: plane.bytesPerRow,
-          height: plane.height,
-          width: plane.width,
-        );
-      },
-    ).toList();
-
-    final inputImageData = InputImageMetadata(
-      size: imageSize,
-      rotation: imageRotation,
-      format: inputImageFormat,
-      bytesPerRow: planeData.first.bytesPerRow,
-    );
-
-    final inputImage = InputImage.fromBytes(
-      bytes: bytes,
-      metadata: inputImageData,
-    );
-
-    faces = await faceDetector.processImage(inputImage);
-
-    setState(() {});
-
-    isBusy = false;
+    processing = false;
   }
 
   @override
   void dispose() {
     controller?.dispose();
     faceDetector.close();
+    player.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
 
-    if (controller == null || !controller!.value.isInitialized) {
+    if (!cameraReady) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
@@ -130,38 +187,37 @@ class _CameraScreenState extends State<CameraScreen> {
 
           CameraPreview(controller!),
 
-          CustomPaint(
-            painter: FacePainter(faces),
+          Positioned(
+            top: 80,
+            left: 20,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              color: Colors.black54,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+
+                  Text(
+                    "Faces detected: $faceCount",
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 20),
+                  ),
+
+                  const SizedBox(height: 6),
+
+                  Text(
+                    "Sleepy: $sleepy",
+                    style: const TextStyle(
+                        color: Colors.yellow, fontSize: 18),
+                  ),
+
+                ],
+              ),
+            ),
           ),
 
         ],
       ),
     );
   }
-}
-
-class FacePainter extends CustomPainter {
-
-  final List<Face> faces;
-
-  FacePainter(this.faces);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-
-    final Paint paint = Paint()
-      ..color = Colors.green
-      ..strokeWidth = 4
-      ..style = PaintingStyle.stroke;
-
-    for (Face face in faces) {
-
-      final rect = face.boundingBox;
-
-      canvas.drawRect(rect, paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

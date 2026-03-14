@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dashboard_screen.dart';
+
 Widget socialLogo(String imagePath) {
   return Container(
     height: 55,
@@ -12,6 +14,7 @@ Widget socialLogo(String imagePath) {
     child: Image.asset(imagePath),
   );
 }
+
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
 
@@ -29,8 +32,12 @@ class _SignupScreenState extends State<SignupScreen> {
   final password = TextEditingController();
   final confirmPassword = TextEditingController();
 
-  Widget inputField(String hint, IconData icon, TextEditingController controller,
-      String error, {bool passwordField = false}) {
+  Widget inputField(
+      String hint,
+      IconData icon,
+      TextEditingController controller,
+      String error,
+      {bool passwordField = false}) {
 
     return TextFormField(
       controller: controller,
@@ -58,20 +65,28 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  void register() {
+  /// REGISTER FUNCTION
+  void register() async {
 
     if (_formKey.currentState!.validate()) {
 
       if (password.text != confirmPassword.text) {
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Passwords do not match"),
-          ),
+          const SnackBar(content: Text("Passwords do not match")),
         );
-
         return;
       }
+
+      /// SAVE USER DATA
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+
+      await prefs.setString("firstName", firstName.text);
+      await prefs.setString("lastName", lastName.text);
+      await prefs.setString("email", email.text);
+
+      /// LOGIN FLAG
+      await prefs.setBool("isLoggedIn", true);
 
       Navigator.pushReplacement(
         context,
@@ -80,18 +95,6 @@ class _SignupScreenState extends State<SignupScreen> {
         ),
       );
     }
-  }
-
-  Widget socialIcon(IconData icon, Color color) {
-    return Container(
-      height: 55,
-      width: 55,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Icon(icon, color: color, size: 28),
-    );
   }
 
   @override
@@ -212,23 +215,22 @@ class _SignupScreenState extends State<SignupScreen> {
 
                   const SizedBox(height: 20),
 
-                  /// SOCIAL LOGIN ICONS
                   Row(
-  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-  children: [
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
 
-    socialLogo("assets/images/facebook.jpg"),
+                      socialLogo("assets/images/facebook.jpg"),
 
-    socialLogo("assets/images/google.png"),
+                      socialLogo("assets/images/google.png"),
 
-    socialLogo("assets/images/apple.png"),
+                      socialLogo("assets/images/apple.png"),
 
-    socialLogo("assets/images/twitter.png"),
+                      socialLogo("assets/images/twitter.png"),
+                    ],
+                  ),
 
-  ],
-)
+                  const SizedBox(height: 40),
 
-                  
                 ],
               ),
             ),
