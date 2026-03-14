@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
-import 'dart:ui';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -13,169 +13,99 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
 
   CameraController? controller;
-  bool isCameraReady = false;
+  List<CameraDescription>? cameras;
 
-  late FaceDetector faceDetector;
+  final FaceDetector faceDetector = FaceDetector(
+    options: FaceDetectorOptions(
+      enableContours: true,
+      enableLandmarks: true,
+      enableClassification: true,
+      performanceMode: FaceDetectorMode.accurate,
+    ),
+  );
 
-  int faceCount = 0;
-
-  bool processing = false;
-
-  String sleepy = "No";
-  String smile = "No";
-  String looking = "Center";
-
-  double attention = 80;
-
-  Rect? faceBox;
+  bool isBusy = false;
+  List<Face> faces = [];
 
   @override
   void initState() {
     super.initState();
-
-    faceDetector = FaceDetector(
-      options: FaceDetectorOptions(
-        performanceMode: FaceDetectorMode.accurate,
-        enableContours: true,
-        enableClassification: true,
-      ),
-    );
-
-    initCamera();
+    startCamera();
   }
 
-  Future<void> initCamera() async {
+  Future<void> startCamera() async {
 
-    final cameras = await availableCameras();
-
-    final frontCamera = cameras.firstWhere(
-      (camera) => camera.lensDirection == CameraLensDirection.front,
-    );
+    cameras = await availableCameras();
 
     controller = CameraController(
-      frontCamera,
-      ResolutionPreset.high,
+      cameras![0],
+      ResolutionPreset.medium,
       enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.yuv420,
     );
 
     await controller!.initialize();
 
-    startStream();
-
-    setState(() {
-      isCameraReady = true;
+    controller!.startImageStream((CameraImage image) {
+      processCameraImage(image);
     });
+
+    setState(() {});
   }
 
-  void startStream() {
+  Future<void> processCameraImage(CameraImage image) async {
 
-    controller!.startImageStream((CameraImage image) async {
+    if (isBusy) return;
+    isBusy = true;
 
-      if (processing) return;
-      processing = true;
+    final WriteBuffer allBytes = WriteBuffer();
 
-      try {
+    for (Plane plane in image.planes) {
+      allBytes.putUint8List(plane.bytes);
+    }
 
-        final camera = controller!.description;
+    final bytes = allBytes.done().buffer.asUint8List();
 
-        final rotation =
-            InputImageRotationValue.fromRawValue(camera.sensorOrientation) ??
-                InputImageRotation.rotation0deg;
+    final Size imageSize =
+        Size(image.width.toDouble(), image.height.toDouble());
 
-        final format =
-            InputImageFormatValue.fromRawValue(image.format.raw) ??
-                InputImageFormat.yuv420;
+    final camera = cameras![0];
 
-        final inputImage = InputImage.fromBytes(
-          bytes: image.planes.first.bytes,
-          metadata: InputImageMetadata(
-            size: Size(image.width.toDouble(), image.height.toDouble()),
-            rotation: rotation,
-            format: format,
-            bytesPerRow: image.planes.first.bytesPerRow,
-          ),
+    final imageRotation =
+        InputImageRotationValue.fromRawValue(camera.sensorOrientation) ??
+            InputImageRotation.rotation0deg;
+
+    final inputImageFormat =
+        InputImageFormatValue.fromRawValue(image.format.raw) ??
+            InputImageFormat.yuv420;
+
+    final planeData = image.planes.map(
+      (Plane plane) {
+        return InputImagePlaneMetadata(
+          bytesPerRow: plane.bytesPerRow,
+          height: plane.height,
+          width: plane.width,
         );
+      },
+    ).toList();
 
-        final faces = await faceDetector.processImage(inputImage);
+    final inputImageData = InputImageMetadata(
+      size: imageSize,
+      rotation: imageRotation,
+      format: inputImageFormat,
+      bytesPerRow: planeData.first.bytesPerRow,
+    );
 
-        print("Faces detected: ${faces.length}");
+    final inputImage = InputImage.fromBytes(
+      bytes: bytes,
+      metadata: inputImageData,
+    );
 
-        if (faces.isNotEmpty) {
+    faces = await faceDetector.processImage(inputImage);
 
-          final face = faces.first;
+    setState(() {});
 
-          faceBox = face.boundingBox;
-
-          /// ---------- Sleepy detection ----------
-          double? leftEye = face.leftEyeOpenProbability;
-          double? rightEye = face.rightEyeOpenProbability;
-
-          if (leftEye != null && rightEye != null) {
-
-            if (leftEye < 0.35 && rightEye < 0.35) {
-              sleepy = "Yes";
-              attention -= 1;
-            } else {
-              sleepy = "No";
-              attention += 0.2;
-            }
-
-          }
-
-          /// ---------- Smile detection ----------
-          if (face.smilingProbability != null) {
-
-            if (face.smilingProbability! > 0.7) {
-              smile = "Yes";
-              attention += 0.2;
-            } else {
-              smile = "No";
-            }
-
-          }
-
-          /// ---------- Looking direction ----------
-          double? yaw = face.headEulerAngleY;
-
-          if (yaw != null) {
-
-            if (yaw > 20) {
-              looking = "Right";
-              attention -= 0.5;
-            } else if (yaw < -20) {
-              looking = "Left";
-              attention -= 0.5;
-            } else {
-              looking = "Center";
-            }
-
-          }
-
-          attention = attention.clamp(0, 100);
-
-        } else {
-
-          faceBox = null;
-
-        }
-
-        if (mounted) {
-          setState(() {
-            faceCount = faces.length;
-          });
-        }
-
-      } catch (e, stack) {
-
-        print("Face detection error: $e");
-        print(stack);
-
-      }
-
-      processing = false;
-
-    });
-
+    isBusy = false;
   }
 
   @override
@@ -188,7 +118,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   Widget build(BuildContext context) {
 
-    if (!isCameraReady) {
+    if (controller == null || !controller!.value.isInitialized) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
@@ -200,53 +130,38 @@ class _CameraScreenState extends State<CameraScreen> {
 
           CameraPreview(controller!),
 
-          /// ---------- Face box ----------
-          if (faceBox != null)
-            Positioned(
-              left: faceBox!.left,
-              top: faceBox!.top,
-              width: faceBox!.width,
-              height: faceBox!.height,
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.green,width: 2),
-                ),
-              ),
-            ),
-
-          /// ---------- Info panel ----------
-          Positioned(
-            top: 60,
-            left: 20,
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              color: Colors.black54,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-
-                  Text("Faces: $faceCount",
-                      style: const TextStyle(color: Colors.white,fontSize: 18)),
-
-                  Text("Sleepy: $sleepy",
-                      style: const TextStyle(color: Colors.white)),
-
-                  Text("Smile: $smile",
-                      style: const TextStyle(color: Colors.white)),
-
-                  Text("Looking: $looking",
-                      style: const TextStyle(color: Colors.white)),
-
-                  Text("Attention: ${attention.toStringAsFixed(0)}%",
-                      style: const TextStyle(color: Colors.yellow)),
-
-                ],
-              ),
-            ),
+          CustomPaint(
+            painter: FacePainter(faces),
           ),
 
         ],
       ),
     );
   }
+}
+
+class FacePainter extends CustomPainter {
+
+  final List<Face> faces;
+
+  FacePainter(this.faces);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+
+    final Paint paint = Paint()
+      ..color = Colors.green
+      ..strokeWidth = 4
+      ..style = PaintingStyle.stroke;
+
+    for (Face face in faces) {
+
+      final rect = face.boundingBox;
+
+      canvas.drawRect(rect, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

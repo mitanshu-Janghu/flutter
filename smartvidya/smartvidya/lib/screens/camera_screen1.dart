@@ -21,6 +21,14 @@ class _CameraScreenState extends State<CameraScreen> {
 
   bool processing = false;
 
+  String sleepy = "No";
+  String smile = "No";
+  String looking = "Center";
+
+  double attention = 80;
+
+  Rect? faceBox;
+
   @override
   void initState() {
     super.initState();
@@ -92,6 +100,65 @@ class _CameraScreenState extends State<CameraScreen> {
 
         print("Faces detected: ${faces.length}");
 
+        if (faces.isNotEmpty) {
+
+          final face = faces.first;
+
+          faceBox = face.boundingBox;
+
+          /// ---------- Sleepy detection ----------
+          double? leftEye = face.leftEyeOpenProbability;
+          double? rightEye = face.rightEyeOpenProbability;
+
+          if (leftEye != null && rightEye != null) {
+
+            if (leftEye < 0.35 && rightEye < 0.35) {
+              sleepy = "Yes";
+              attention -= 1;
+            } else {
+              sleepy = "No";
+              attention += 0.2;
+            }
+
+          }
+
+          /// ---------- Smile detection ----------
+          if (face.smilingProbability != null) {
+
+            if (face.smilingProbability! > 0.7) {
+              smile = "Yes";
+              attention += 0.2;
+            } else {
+              smile = "No";
+            }
+
+          }
+
+          /// ---------- Looking direction ----------
+          double? yaw = face.headEulerAngleY;
+
+          if (yaw != null) {
+
+            if (yaw > 20) {
+              looking = "Right";
+              attention -= 0.5;
+            } else if (yaw < -20) {
+              looking = "Left";
+              attention -= 0.5;
+            } else {
+              looking = "Center";
+            }
+
+          }
+
+          attention = attention.clamp(0, 100);
+
+        } else {
+
+          faceBox = null;
+
+        }
+
         if (mounted) {
           setState(() {
             faceCount = faces.length;
@@ -133,18 +200,47 @@ class _CameraScreenState extends State<CameraScreen> {
 
           CameraPreview(controller!),
 
+          /// ---------- Face box ----------
+          if (faceBox != null)
+            Positioned(
+              left: faceBox!.left,
+              top: faceBox!.top,
+              width: faceBox!.width,
+              height: faceBox!.height,
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.green,width: 2),
+                ),
+              ),
+            ),
+
+          /// ---------- Info panel ----------
           Positioned(
             top: 60,
             left: 20,
             child: Container(
               padding: const EdgeInsets.all(12),
               color: Colors.black54,
-              child: Text(
-                "Faces detected: $faceCount",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+
+                  Text("Faces: $faceCount",
+                      style: const TextStyle(color: Colors.white,fontSize: 18)),
+
+                  Text("Sleepy: $sleepy",
+                      style: const TextStyle(color: Colors.white)),
+
+                  Text("Smile: $smile",
+                      style: const TextStyle(color: Colors.white)),
+
+                  Text("Looking: $looking",
+                      style: const TextStyle(color: Colors.white)),
+
+                  Text("Attention: ${attention.toStringAsFixed(0)}%",
+                      style: const TextStyle(color: Colors.yellow)),
+
+                ],
               ),
             ),
           ),
